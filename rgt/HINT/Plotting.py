@@ -14,8 +14,10 @@ from scipy.stats import scoreatpercentile
 from argparse import SUPPRESS
 import pyx
 
+from multiprocessing import Pool, cpu_count
+
 # Internal
-from rgt.Util import GenomeData, AuxiliaryFunctions
+from rgt.Util import GenomeData, AuxiliaryFunctions, HmmData
 from rgt.HINT.signalProcessing import GenomicSignal
 from rgt.GenomicRegionSet import GenomicRegionSet
 from rgt.HINT.biasTable import BiasTable
@@ -38,6 +40,7 @@ def plotting_args(parser):
     parser.add_argument("--window-size", type=int, metavar="INT", default=400)
 
     # Hidden Options
+    parser.add_argument("--bc", default=False, action='store_true', help=SUPPRESS)
     parser.add_argument("--initial-clip", type=int, metavar="INT", default=50, help=SUPPRESS)
     parser.add_argument("--downstream-ext", type=int, metavar="INT", default=1, help=SUPPRESS)
     parser.add_argument("--upstream-ext", type=int, metavar="INT", default=0, help=SUPPRESS)
@@ -726,7 +729,167 @@ def strand_line(args):
             mean_signal_r = np.add(mean_signal_r, signal_r)
 
             # Update pwm
+            if pwm_dict is None:
+                pwm_dict = dict([("A", [0.0] * (p2 - p1)), ("C", [0.0] * (p2 - p1)),
+                                 ("G", [0.0] * (p2 - p1)), ("T", [0.0] * (p2 - p1)),
+                                 ("N", [0.0] * (p2 - p1))])
 
+            aux_plus = 1
+            dna_seq = str(fasta.fetch(region.chrom, p1, p2)).upper()
+            if (region.final - region.initial) % 2 == 0:
+                aux_plus = 0
+            dna_seq_rev = AuxiliaryFunctions.revcomp(str(fasta.fetch(region.chrom,
+                                                                     p1 + aux_plus, p2 + aux_plus)).upper())
+            if region.orientation == "+":
+                for i in range(0, len(dna_seq)):
+                    pwm_dict[dna_seq[i]][i] += 1
+            elif region.orientation == "-":
+                for i in range(0, len(dna_seq_rev)):
+                    pwm_dict[dna_seq_rev[i]][i] += 1
+
+    mean_norm_signal_f = genomic_signal.boyle_norm(mean_signal_f)
+    perc = scoreatpercentile(mean_norm_signal_f, 98)
+    std = np.std(mean_norm_signal_f)
+    mean_norm_signal_f = genomic_signal.hon_norm_atac(mean_norm_signal_f, perc, std)
+
+    mean_norm_signal_r = genomic_signal.boyle_norm(mean_signal_r)
+    perc = scoreatpercentile(mean_norm_signal_r, 98)
+    std = np.std(mean_norm_signal_r)
+    mean_norm_signal_r = genomic_signal.hon_norm_atac(mean_norm_signal_r, perc, std)
+
+    mean_slope_signal_f = genomic_signal.slope(mean_norm_signal_f, genomic_signal.sg_coefs)
+    mean_slope_signal_r = genomic_signal.slope(mean_norm_signal_r, genomic_signal.sg_coefs)
+
+    # Output the norm and slope signal
+    output_fname = os.path.join(args.output_location, "{}.txt".format(args.output_prefix))
+    f = open(output_fname, "w")
+    f.write("\t".join((map(str, mean_norm_signal_f))) + "\n")
+    f.write("\t".join((map(str, mean_slope_signal_f))) + "\n")
+    f.write("\t".join((map(str, mean_norm_signal_r))) + "\n")
+    f.write("\t".join((map(str, mean_slope_signal_r))) + "\n")
+    f.close()
+
+    # Output PWM and create logo
+    pwm_fname = os.path.join(args.output_location, "{}.pwm".format(args.output_prefix))
+    pwm_file = open(pwm_fname, "w")
+    for e in ["A", "C", "G", "T"]:
+        pwm_file.write(" ".join([str(int(f)) for f in pwm_dict[e]]) + "\n")
+    pwm_file.close()
+
+    logo_fname = os.path.join(args.output_location, "{}.logo.eps".format(args.output_prefix))
+    pwm = motifs.read(open(pwm_fname), "pfm")
+    pwm.weblogo(logo_fname, format="eps", stack_width="large", stacks_per_line=str(args.window_size),
+                color_scheme="color_classic", unit_name="", show_errorbars=False, logo_title="",
+                show_xaxis=False, xaxis_label="", show_yaxis=False, yaxis_label="",
+                show_fineprint=False, show_ends=False)
+
+    start = -(args.window_size / 2)
+    end = (args.window_size / 2) - 1
+    x = np.linspace(start, end, num=args.window_size)
+
+    fig = plt.figure(figsize=(8, 4))
+    ax = fig.add_subplot(111)
+
+    min_signal = min(min(mean_signal_f), min(mean_signal_r))
+    max_signal = max(max(mean_signal_f), max(mean_signal_r))
+    ax.plot(x, mean_signal_f, color='red', label='Forward')
+    ax.plot(x, mean_signal_r, color='green', label='Reverse')
+    ax.set_title(args.output_prefix, fontweight='bold')
+
+    ax.xaxis.set_ticks_position('bottom')
+    ax.yaxis.set_ticks_position('left')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_position(('outward', 15))
+    ax.tick_params(direction='out')
+    ax.set_xticks([start, 0, end])
+    ax.set_xticklabels([str(start), 0, str(end)])
+    ax.set_yticks([min_signal, max_signal])
+    ax.set_yticklabels([str(round(min_signal, 2)), str(round(max_signal, 2))], rotation=90)
+    ax.set_xlim(start, end)
+    ax.set_ylim([min_signal, max_signal])
+    ax.legend(loc="upper right", frameon=False)
+    ax.spines['bottom'].set_position(('outward', 40))
+
+    figure_name = os.path.join(args.output_location, "{}.line.eps".format(args.output_prefix))
+    fig.subplots_adjust(bottom=.2, hspace=.5)
+    fig.tight_layout()
+    fig.savefig(figure_name, format="eps", dpi=300)
+
+    # Creating canvas and printing eps / pdf with merged results
+    output_fname = os.path.join(args.output_location, "{}.eps".format(args.output_prefix))
+    c = pyx.canvas.canvas()
+    c.insert(pyx.epsfile.epsfile(0, 0, figure_name, scale=1.0))
+    c.insert(pyx.epsfile.epsfile(1.37, 0.89, logo_fname, width=18.5, height=1.75))
+    c.writeEPSfile(output_fname)
+    os.system("epstopdf " + figure_name)
+    os.system("epstopdf " + logo_fname)
+    os.system("epstopdf " + output_fname)
+
+    # os.remove(pwm_fname)
+    os.remove(os.path.join(args.output_location, "{}.line.eps".format(args.output_prefix)))
+    os.remove(os.path.join(args.output_location, "{}.logo.eps".format(args.output_prefix)))
+    os.remove(os.path.join(args.output_location, "{}.line.pdf".format(args.output_prefix)))
+    os.remove(os.path.join(args.output_location, "{}.logo.pdf".format(args.output_prefix)))
+    os.remove(os.path.join(args.output_location, "{}.eps".format(args.output_prefix)))
+
+
+def strand_line2(args):
+    genomic_signal = GenomicSignal(args.reads_file)
+    genomic_signal.load_sg_coefs(slope_window_size=9)
+
+    bias_table = None
+    if args.bc:
+        hmm_data = HmmData()
+        table_F = hmm_data.get_default_bias_table_F_ATAC()
+        table_R = hmm_data.get_default_bias_table_R_ATAC()
+        bias_table = BiasTable().load_table(table_file_name_F=table_F, table_file_name_R=table_R)
+
+    genome_data = GenomeData(args.organism)
+    fasta = Fastafile(genome_data.get_genome())
+
+    def output_plot(bamfile, regions, window_size, output_location):
+        mean_signal_f = np.zeros(window_size)
+        mean_signal_r = np.zeros(window_size)
+
+        bam = Samfile(args.reads_file, "rb")
+        pwm_dict = None
+
+        for region in regions:
+
+
+
+
+    mean_signal_f = np.zeros(args.window_size)
+    mean_signal_r = np.zeros(args.window_size)
+
+    pwm_dict = None
+    for region in mpbs_regions:
+        if str(region.name).split(":")[-1] == "Y":
+            # Extend by 50 bp
+            mid = (region.initial + region.final) / 2
+            p1 = mid - (args.window_size / 2)
+            p2 = mid + (args.window_size / 2)
+
+            if args.bias_table is not None:
+                signal_f, signal_r = genomic_signal.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1,
+                                                                                     end=p2, bam=bam, fasta=fasta,
+                                                                                     bias_table=table,
+                                                                                     forward_shift=args.forward_shift,
+                                                                                     reverse_shift=args.reverse_shift)
+            else:
+                signal_f, signal_r = genomic_signal.get_raw_signal_by_fragment_length(ref=region.chrom, start=p1,
+                                                                                      end=p2,
+                                                                                      bam=bam,
+                                                                                      forward_shift=args.forward_shift,
+                                                                                      reverse_shift=args.reverse_shift)
+
+            num_sites += 1
+
+            mean_signal_f = np.add(mean_signal_f, signal_f)
+            mean_signal_r = np.add(mean_signal_r, signal_r)
+
+            # Update pwm
             if pwm_dict is None:
                 pwm_dict = dict([("A", [0.0] * (p2 - p1)), ("C", [0.0] * (p2 - p1)),
                                  ("G", [0.0] * (p2 - p1)), ("T", [0.0] * (p2 - p1)),

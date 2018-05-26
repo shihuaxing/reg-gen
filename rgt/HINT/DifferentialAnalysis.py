@@ -37,16 +37,22 @@ def diff_analysis_args(parser):
                         help="motif predicted binding sites file for condition 1, must be .bed file. DEFAULT: None")
     parser.add_argument("--mpbs-file2", type=str, metavar="FILE", default=None,
                         help="motif predicted binding sites file for condition 2, must be .bed file. DEFAULT: None")
+    parser.add_argument("--mpbs-file3", type=str, metavar="FILE", default=None,
+                        help="motif predicted binding sites file for condition 2, must be .bed file. DEFAULT: None")
     parser.add_argument("--reads-file1", type=str, metavar="FILE", default=None,
                         help="The BAM file containing the DNase-seq or ATAC-seq reads for condition 1. DEFAULT: None")
     parser.add_argument("--reads-file2", type=str, metavar="FILE", default=None,
                         help="The BAM file containing the DNase-seq or ATAC-seq reads for condition 2. DEFAULT: None")
+    parser.add_argument("--reads-file3", type=str, metavar="FILE", default=None,
+                        help="The BAM file containing the DNase-seq or ATAC-seq reads for condition 3. DEFAULT: None")
 
     parser.add_argument("--window-size", type=int, metavar="INT", default=200,
                         help="The window size for differential analysis. DEFAULT: 200")
     parser.add_argument("--factor1", type=float, metavar="FLOAT", default=None,
                         help="The normalization factor for condition 1. DEFAULT: None")
     parser.add_argument("--factor2", type=float, metavar="FLOAT", default=None,
+                        help="The normalization factor for condition 1. DEFAULT: None")
+    parser.add_argument("--factor3", type=float, metavar="FLOAT", default=None,
                         help="The normalization factor for condition 1. DEFAULT: None")
 
     parser.add_argument("--forward-shift", type=int, metavar="INT", default=5, help=SUPPRESS)
@@ -57,6 +63,8 @@ def diff_analysis_args(parser):
     parser.add_argument("--condition1", type=str, metavar="STRING", default="condition1",
                         help="The name of condition1. DEFAULT: condition1")
     parser.add_argument("--condition2", type=str, metavar="STRING", default="condition1",
+                        help="The name of condition2. DEFAULT: condition2")
+    parser.add_argument("--condition3", type=str, metavar="STRING", default="condition1",
                         help="The name of condition2. DEFAULT: condition2")
     parser.add_argument("--fdr", type=float, metavar="FLOAT", default=0.05,
                         help="The false discovery rate. DEFAULT: 0.05")
@@ -143,26 +151,19 @@ def get_raw_signal(arguments):
 
 
 def get_bc_signal(arguments):
-    (mpbs_name, mpbs_file1, mpbs_file2, reads_file1, reads_file2, organism,
-     window_size, forward_shift, reverse_shift, bias_table1, bias_table2) = arguments
-
-    mpbs1 = GenomicRegionSet("Motif Predicted Binding Sites of Condition1")
-    mpbs1.read(mpbs_file1)
-
-    mpbs2 = GenomicRegionSet("Motif Predicted Binding Sites of Condition2")
-    mpbs2.read(mpbs_file2)
-
-    mpbs = mpbs1.combine(mpbs2, output=True)
-    mpbs.sort()
+    (mpbs_name, mpbs, reads_file1, reads_file2, reads_file3,
+     organism, window_size, forward_shift, reverse_shift, bias_table) = arguments
 
     bam1 = Samfile(reads_file1, "rb")
     bam2 = Samfile(reads_file2, "rb")
+    bam3 = Samfile(reads_file3, "rb")
 
     genome_data = GenomeData(organism)
     fasta = Fastafile(genome_data.get_genome())
 
     signal_1 = np.zeros(window_size)
     signal_2 = np.zeros(window_size)
+    signal_3 = np.zeros(window_size)
     motif_len = None
     pwm = dict([("A", [0.0] * window_size), ("C", [0.0] * window_size),
                 ("G", [0.0] * window_size), ("T", [0.0] * window_size),
@@ -184,11 +185,15 @@ def get_bc_signal(arguments):
             continue
         # Fetch raw signal
         signal1 = bias_correction(chrom=region.chrom, start=p1, end=p2, bam=bam1,
-                                  bias_table=bias_table1, genome_file_name=genome_data.get_genome(),
+                                  bias_table=bias_table, genome_file_name=genome_data.get_genome(),
                                   forward_shift=forward_shift, reverse_shift=reverse_shift)
 
         signal2 = bias_correction(chrom=region.chrom, start=p1, end=p2, bam=bam2,
-                                  bias_table=bias_table2, genome_file_name=genome_data.get_genome(),
+                                  bias_table=bias_table, genome_file_name=genome_data.get_genome(),
+                                  forward_shift=forward_shift, reverse_shift=reverse_shift)
+
+        signal3 = bias_correction(chrom=region.chrom, start=p1, end=p2, bam=bam3,
+                                  bias_table=bias_table, genome_file_name=genome_data.get_genome(),
                                   forward_shift=forward_shift, reverse_shift=reverse_shift)
 
         if len(signal1) != len(signal_1) or len(signal2) != len(signal_2):
@@ -196,10 +201,11 @@ def get_bc_signal(arguments):
 
         signal_1 = np.add(signal_1, np.array(signal1))
         signal_2 = np.add(signal_2, np.array(signal2))
+        signal_3 = np.add(signal_3, np.array(signal3))
 
         update_pwm(pwm, fasta, region, p1, p2)
 
-    return signal_1, signal_2, motif_len, pwm, num_motif
+    return signal_1, signal_2, signal_3, motif_len, pwm, num_motif
 
 
 def diff_analysis_run(args):
@@ -219,12 +225,17 @@ def diff_analysis_run(args):
     mpbs2 = GenomicRegionSet("Motif Predicted Binding Sites of Condition2")
     mpbs2.read(args.mpbs_file2)
 
+    mpbs3 = GenomicRegionSet("Motif Predicted Binding Sites of Condition3")
+    mpbs3.read(args.mpbs_file3)
+
     mpbs = mpbs1.combine(mpbs2, output=True)
+    mpbs = mpbs.combine(mpbs3, output=True)
     mpbs.sort()
     mpbs_name_list = list(set(mpbs.get_names()))
 
     signal_dict_by_tf_1 = dict()
     signal_dict_by_tf_2 = dict()
+    signal_dict_by_tf_3 = dict()
     motif_len_dict = dict()
     motif_num_dict = dict()
     pwm_dict_by_tf = dict()
@@ -235,14 +246,12 @@ def diff_analysis_run(args):
         hmm_data = HmmData()
         table_F = hmm_data.get_default_bias_table_F_ATAC()
         table_R = hmm_data.get_default_bias_table_R_ATAC()
-        bias_table1 = BiasTable().load_table(table_file_name_F=table_F, table_file_name_R=table_R)
-        bias_table2 = BiasTable().load_table(table_file_name_F=table_F, table_file_name_R=table_R)
+        bias_table = BiasTable().load_table(table_file_name_F=table_F, table_file_name_R=table_R)
 
         mpbs_list = list()
         for mpbs_name in mpbs_name_list:
-            mpbs_list.append((mpbs_name, args.mpbs_file1, args.mpbs_file2, args.reads_file1, args.reads_file2,
-                              args.organism, args.window_size, args.forward_shift, args.reverse_shift,
-                              bias_table1, bias_table2))
+            mpbs_list.append((mpbs_name, mpbs, args.reads_file1, args.reads_file2, args.reads_file3,
+                              args.organism, args.window_size, args.forward_shift, args.reverse_shift, bias_table))
         res = pool.map(get_bc_signal, mpbs_list)
 
     # differential analysis using raw signal
@@ -256,13 +265,15 @@ def diff_analysis_run(args):
     for idx, mpbs_name in enumerate(mpbs_name_list):
         signal_dict_by_tf_1[mpbs_name] = res[idx][0]
         signal_dict_by_tf_2[mpbs_name] = res[idx][1]
-        motif_len_dict[mpbs_name] = res[idx][2]
-        pwm_dict_by_tf[mpbs_name] = res[idx][3]
-        motif_num_dict[mpbs_name] = res[idx][4]
+        signal_dict_by_tf_3[mpbs_name] = res[idx][2]
+        motif_len_dict[mpbs_name] = res[idx][3]
+        pwm_dict_by_tf[mpbs_name] = res[idx][4]
+        motif_num_dict[mpbs_name] = res[idx][5]
 
-    if args.factor1 is None or args.factor2 is None:
-        args.factor1, args.factor2 = compute_factors(signal_dict_by_tf_1, signal_dict_by_tf_2)
-        output_factor(args, args.factor1, args.factor2)
+    if args.factor1 is None or args.factor2 is None or args.factor3 is None:
+        args.factor1, args.factor2, args.factor3 = compute_factors(signal_dict_by_tf_1, signal_dict_by_tf_2,
+                                                                   signal_dict_by_tf_3)
+        output_factor(args, args.factor1, args.factor2, args.factor3)
 
     if args.output_profiles:
         output_profiles(mpbs_name_list, signal_dict_by_tf_1, output_location, args.condition1)
@@ -273,23 +284,24 @@ def diff_analysis_run(args):
     plots_list = list()
     for mpbs_name in mpbs_name_list:
         plots_list.append((mpbs_name, motif_num_dict[mpbs_name], signal_dict_by_tf_1[mpbs_name],
-                           signal_dict_by_tf_2[mpbs_name], args.factor1, args.factor2, args.condition1,
-                           args.condition2, pwm_dict_by_tf[mpbs_name], output_location, args.window_size,
+                           signal_dict_by_tf_2[mpbs_name], signal_dict_by_tf_3[mpbs_name],
+                           args.factor1, args.factor2, args.factor3, args.condition1,
+                           args.condition2, args.condition3, pwm_dict_by_tf[mpbs_name], output_location,
+                           args.window_size,
                            args.standardize))
 
     pool.map(line_plot, plots_list)
 
     for mpbs_name in mpbs_name_list:
         res = get_ps_tc_results(signal_dict_by_tf_1[mpbs_name], signal_dict_by_tf_2[mpbs_name],
-                                args.factor1, args.factor2, motif_num_dict[mpbs_name], motif_len_dict[mpbs_name])
-        #
-        #     # only use the factors whose protection scores are greater than 0
-        #     if res[0] > 0 and res[1] < 0:
+                                signal_dict_by_tf_3[mpbs_name], args.factor1, args.factor2, args.factor3,
+                                motif_num_dict[mpbs_name], motif_len_dict[mpbs_name])
         ps_tc_results_by_tf[mpbs_name] = res
-    #
-    stat_results_by_tf = get_stat_results(ps_tc_results_by_tf)
-    scatter_plot(args, stat_results_by_tf)
-    output_stat_results(args, stat_results_by_tf)
+
+    # stat_results_by_tf = get_stat_results(ps_tc_results_by_tf)
+    # scatter_plot(args, stat_results_by_tf)
+    # output_stat_results(args, stat_results_by_tf)
+    output_stat_results(args, ps_tc_results_by_tf)
 
 
 def bias_correction(chrom, start, end, bam, bias_table, genome_file_name, forward_shift, reverse_shift):
@@ -394,11 +406,10 @@ def bias_correction(chrom, start, end, bam, bias_table, genome_file_name, forwar
     return bc_signal
 
 
-def get_ps_tc_results(signal_1, signal_2, factor1, factor2, num_motif, motif_len):
+def get_ps_tc_results(signal_1, signal_2, signal_3, factor1, factor2, factor3, num_motif, motif_len):
     signal_1 = (signal_1 / factor1) / num_motif
     signal_2 = (signal_2 / factor2) / num_motif
-
-    # signal_1, signal_2 = standard(signal_1, signal_2)
+    signal_3 = (signal_3 / factor3) / num_motif
 
     signal_half_len = len(signal_1) / 2
 
@@ -416,9 +427,22 @@ def get_ps_tc_results(signal_1, signal_2, factor1, factor2, num_motif, motif_len
     protect_score2 = (nr - nc) / motif_len + (nl - nc) / motif_len
     tc2 = (sum(signal_2) - nc) / (len(signal_2) - motif_len)
 
-    protect_diff = protect_score2 - protect_score1
-    tc_diff = tc2 - tc1
-    return [protect_score1, protect_score2, protect_diff, tc1, tc2, tc_diff]
+    nc = sum(signal_3[signal_half_len - motif_len / 2:signal_half_len + motif_len / 2])
+    nr = sum(signal_3[signal_half_len + motif_len / 2:signal_half_len + motif_len / 2 + motif_len])
+    nl = sum(signal_3[signal_half_len - motif_len / 2 - motif_len:signal_half_len - motif_len / 2])
+
+    protect_score3 = (nr - nc) / motif_len + (nl - nc) / motif_len
+    tc3 = (sum(signal_3) - nc) / (len(signal_3) - motif_len)
+
+    diff_ps_12 = protect_score2 - protect_score1
+    diff_ps_13 = protect_score3 - protect_score1
+    diff_ps_23 = protect_score3 - protect_score2
+    diff_tc_12 = tc2 - tc1
+    diff_tc_13 = tc3 - tc1
+    diff_tc_23 = tc3 - tc2
+
+    return [protect_score1, protect_score2, protect_score3, diff_ps_12, diff_ps_13, diff_ps_23,
+            tc1, tc2, tc3, diff_tc_12, diff_tc_13, diff_tc_23]
 
 
 def update_pwm(pwm, fasta, region, p1, p2):
@@ -437,52 +461,61 @@ def update_pwm(pwm, fasta, region, p1, p2):
             pwm[dna_seq_rev[i]][i] += 1
 
 
-def compute_factors(signal_dict_by_tf_1, signal_dict_by_tf_2):
+def compute_factors(signal_dict_by_tf_1, signal_dict_by_tf_2, signal_dict_by_tf_3):
     keys = signal_dict_by_tf_1.keys()
 
     signal_1 = np.zeros(len(keys))
     signal_2 = np.zeros(len(keys))
+    signal_3 = np.zeros(len(keys))
 
     for idx, key in enumerate(keys):
         signal_1[idx] = sum(signal_dict_by_tf_1[key])
         signal_2[idx] = sum(signal_dict_by_tf_2[key])
+        signal_3[idx] = sum(signal_dict_by_tf_3[key])
 
     # Take log
     log_tc1 = np.log(signal_1)
     log_tc2 = np.log(signal_2)
+    log_tc3 = np.log(signal_3)
 
     # Average
-    average_log_tc = np.add(log_tc1, log_tc2) / 2
+    average_log_tc = np.add(log_tc1, log_tc2)
+    average_log_tc = np.add(average_log_tc, log_tc3) / 3
 
     # Filter
     filter_log_tc1 = log_tc1[~np.isnan(log_tc1)]
     filter_log_tc2 = log_tc2[~np.isnan(log_tc2)]
+    filter_log_tc3 = log_tc3[~np.isnan(log_tc3)]
     filter_log_tc = average_log_tc[~np.isnan(average_log_tc)]
 
     # Subtract
     sub_tc1 = np.subtract(filter_log_tc1, filter_log_tc)
     sub_tc2 = np.subtract(filter_log_tc2, filter_log_tc)
+    sub_tc3 = np.subtract(filter_log_tc3, filter_log_tc)
 
     median_tc1 = np.median(sub_tc1)
     median_tc2 = np.median(sub_tc2)
+    median_tc3 = np.median(sub_tc3)
 
     factor1 = np.exp(median_tc1)
     factor2 = np.exp(median_tc2)
+    factor3 = np.exp(median_tc3)
 
-    return factor1, factor2
+    return factor1, factor2, factor3
 
 
 def line_plot(arguments):
-    (mpbs_name, num_fp, signal_1, signal_2, factor1, factor2, condition1, condition2,
-     pwm_dict, output_location, window_size, standardize) = arguments
+    (mpbs_name, num_fp, signal_1, signal_2, signal_3, factor1, factor2, factor3, condition1, condition2,
+     condition3, pwm_dict, output_location, window_size, standardize) = arguments
 
     mpbs_name = mpbs_name.replace("(", "_")
     mpbs_name = mpbs_name.replace(")", "")
     mean_signal_1 = (signal_1 / num_fp) / factor1
     mean_signal_2 = (signal_2 / num_fp) / factor2
+    mean_signal_3 = (signal_3 / num_fp) / factor3
 
-    if standardize:
-        mean_signal_1, mean_signal_2 = standard(mean_signal_1, mean_signal_2)
+    # if standardize:
+    #    mean_signal_1, mean_signal_2 = standard(mean_signal_1, mean_signal_2)
 
     # Output PWM and create logo
     pwm_fname = os.path.join(output_location, "{}.pwm".format(mpbs_name))
@@ -506,6 +539,7 @@ def line_plot(arguments):
     fig, ax = plt.subplots()
     ax.plot(x, mean_signal_1, color='red', label=condition1)
     ax.plot(x, mean_signal_2, color='blue', label=condition2)
+    ax.plot(x, mean_signal_3, color='green', label=condition3)
     ax.text(0.15, 0.9, 'n = {}'.format(num_fp), verticalalignment='bottom', horizontalalignment='right',
             transform=ax.transAxes, fontweight='bold')
 
@@ -517,8 +551,8 @@ def line_plot(arguments):
     ax.tick_params(direction='out')
     ax.set_xticks([start, 0, end])
     ax.set_xticklabels([str(start), 0, str(end)])
-    min_signal = min(min(mean_signal_1), min(mean_signal_2))
-    max_signal = max(max(mean_signal_1), max(mean_signal_2))
+    min_signal = min(min(mean_signal_1), min(mean_signal_2), min(mean_signal_3))
+    max_signal = max(max(mean_signal_1), max(mean_signal_2), max(mean_signal_3))
     ax.set_yticks([min_signal, max_signal])
     ax.set_yticklabels([str(round(min_signal, 2)), str(round(max_signal, 2))], rotation=90)
 
@@ -580,6 +614,39 @@ def scatter_plot(args, stat_results_by_tf):
     fig.savefig(figure_name, format="pdf", dpi=300)
 
 
+def scatter_plot3(args, stat_results_by_tf):
+    tc_diff = list()
+    ps_diff = list()
+    mpbs_name_list = stat_results_by_tf.keys()
+    P_values = list()
+    for mpbs_name in mpbs_name_list:
+        ps_diff.append(float(stat_results_by_tf[mpbs_name][2]))
+        tc_diff.append(float(stat_results_by_tf[mpbs_name][-3]))
+        P_values.append(np.log10(float(stat_results_by_tf[mpbs_name][-1])))
+
+    fig, ax = plt.subplots(figsize=(12, 12))
+    for i, mpbs_name in enumerate(mpbs_name_list):
+        if stat_results_by_tf[mpbs_name][-1] < args.fdr:
+            ax.scatter(tc_diff[i], ps_diff[i], c="red")
+            ax.annotate(mpbs_name, (tc_diff[i], ps_diff[i]), alpha=0.6)
+        else:
+            ax.scatter(tc_diff[i], ps_diff[i], c="black", alpha=0.6)
+    ax.margins(0.05)
+
+    tc_diff_mean = np.mean(tc_diff)
+    ps_diff_mean = np.mean(ps_diff)
+    ax.axvline(x=tc_diff_mean, linewidth=2, linestyle='dashed')
+    ax.axhline(y=ps_diff_mean, linewidth=2, linestyle='dashed')
+
+    ax.set_xlabel("{} $\longrightarrow$ {} \n $\Delta$ Open Chromatin Score".format(args.condition1, args.condition2),
+                  fontweight='bold', fontsize=20)
+    ax.set_ylabel("$\Delta$ Protection Score \n {} $\longrightarrow$ {}".format(args.condition1, args.condition2),
+                  fontweight='bold', rotation=90, fontsize=20)
+
+    figure_name = os.path.join(args.output_location, "{}_{}_statistics.pdf".format(args.condition1, args.condition2))
+    fig.savefig(figure_name, format="pdf", dpi=300)
+
+
 def output_results(args, ps_tc_results_by_tf):
     mpbs_name_list = ps_tc_results_by_tf.keys()
     header = ["Motif",
@@ -595,23 +662,32 @@ def output_results(args, ps_tc_results_by_tf):
 
 
 def output_stat_results(args, stat_results_by_tf):
-    output_fname = os.path.join(args.output_location, "{}_{}_statistics.txt".format(args.condition1, args.condition2))
+    output_fname = os.path.join(args.output_location, "{}_statistics.txt".format(args.output_prefix))
     header = ["Motif",
-              "Protection_Score_{}".format(args.condition1), "Protection_Score_{}".format(args.condition2),
+              "Protection_Score_{}".format(args.condition1),
+              "Protection_Score_{}".format(args.condition2),
+              "Protection_Score_{}".format(args.condition3),
               "Protection_Diff_{}_{}".format(args.condition1, args.condition2),
-              "TC_{}".format(args.condition1), "TC_{}".format(args.condition2),
-              "TC_Diff_{}_{}".format(args.condition1, args.condition2), "P_values", "Adjust_p_values"]
+              "Protection_Diff_{}_{}".format(args.condition1, args.condition3),
+              "Protection_Diff_{}_{}".format(args.condition2, args.condition3),
+              "TC_{}".format(args.condition1),
+              "TC_{}".format(args.condition2),
+              "TC_{}".format(args.condition3),
+              "TC_Diff_{}_{}".format(args.condition1, args.condition2),
+              "TC_Diff_{}_{}".format(args.condition1, args.condition3),
+              "TC_Diff_{}_{}".format(args.condition2, args.condition3)]
     with open(output_fname, "w") as f:
         f.write("\t".join(header) + "\n")
         for mpbs_name in stat_results_by_tf.keys():
             f.write(mpbs_name + "\t" + "\t".join(map(str, stat_results_by_tf[mpbs_name])) + "\n")
 
 
-def output_factor(args, factor1, factor2):
-    output_file = os.path.join(args.output_location, "{}_{}_factor.txt".format(args.condition1, args.condition2))
+def output_factor(args, factor1, factor2, factor3):
+    output_file = os.path.join(args.output_location, "{}_factor.txt".format(args.output_prefix))
     f = open(output_file, "w")
     f.write("Factor1: " + str(factor1) + "\n")
     f.write("Factor2: " + str(factor2) + "\n")
+    f.write("Factor3: " + str(factor3) + "\n")
     f.close()
 
 
