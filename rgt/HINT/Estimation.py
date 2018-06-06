@@ -341,7 +341,8 @@ def estimate_bias_vom(args):
     slim_dimont_predictor = hmm_data.get_slim_dimont_predictor()
     test_fa = hmm_data.get_default_test_fa()
 
-    shutil.copy(test_fa, os.getcwd())
+    dst = os.path.join(os.getcwd(), "{}.fa".format(args.output_prefix))
+    shutil.copy(test_fa, dst)
 
     output_fname_f_obs = os.path.join(args.output_location, "{}_f_obs.fa".format(str(args.k_nb)))
     output_fname_f_exp = os.path.join(args.output_location, "{}_f_exp.fa".format(str(args.k_nb)))
@@ -349,6 +350,8 @@ def estimate_bias_vom(args):
     output_fname_r_exp = os.path.join(args.output_location, "{}_r_exp.fa".format(str(args.k_nb)))
 
     infix = "{}_f_obs".format(str(args.k_nb))
+    os.mkdir(os.path.join(args.output_location, args.output_prefix))
+
     create_model(args, output_fname_f_obs, infix, learn_dependency_model, slim_dimont_predictor)
 
     infix = "{}_f_exp".format(str(args.k_nb))
@@ -360,7 +363,7 @@ def estimate_bias_vom(args):
     infix = "{}_r_exp".format(str(args.k_nb))
     create_model(args, output_fname_r_exp, infix, learn_dependency_model, slim_dimont_predictor)
 
-    os.remove(os.path.join(os.getcwd(), "test.fa"))
+    os.remove(dst)
 
     compute_bias(args)
 
@@ -381,21 +384,20 @@ def seq2vector(sequence):
 
 
 def create_model(args, seq_file, infix, learn_dependency_model, slim_dimont_predictor):
+    work_dir = os.path.join(args.output_location, args.output_prefix, infix)
+    os.mkdir(work_dir)
     subprocess.call(["java", "-jar", learn_dependency_model, "i=Tabular", "m=LSlim", "is={}".format(seq_file),
-                     "outdir={}".format(args.output_location)])
+                     "outdir={}".format(work_dir)])
 
-    output_file = os.path.join(args.output_location, "{}.txt".format(infix))
-    slim_dimont_classifier = os.path.join(args.output_location, "SlimDimont_classifier.xml")
+    output_file = os.path.join(args.output_location, args.output_prefix, "{}.txt".format(infix))
+    slim_dimont_classifier = os.path.join(work_dir, "SlimDimont_classifier.xml")
 
     with open(output_file, "w") as f:
         subprocess.call(["java", "-jar", slim_dimont_predictor, "slimdimont={}".format(slim_dimont_classifier),
-                         "data=./test.fa", "infix={}".format(infix)], stdout=f)
+                         "data={}.fa".format(args.output_prefix), "infix={}".format(infix)], stdout=f)
 
-    os.remove(os.path.join(args.output_location, "Dependency_logo.pdf"))
-    os.remove(os.path.join(args.output_location, "Predicted_sequence_orientations_and_scores.tsv"))
-    os.remove(os.path.join(args.output_location, "protocol_learn.txt"))
+    # shutil.rmtree(work_dir, ignore_errors=True)
     os.remove(os.path.join(os.getcwd(), "{}-predictions.txt".format(infix)))
-    os.remove(slim_dimont_classifier)
     os.remove(seq_file)
 
 
@@ -845,20 +847,20 @@ def read_model(input_fname, k_nb):
 
 
 def compute_bias(args):
-    input_f_obs = os.path.join(args.output_location, "{}_f_obs.txt".format(str(args.k_nb)))
-    input_f_exp = os.path.join(args.output_location, "{}_f_exp.txt".format(str(args.k_nb)))
-    input_r_obs = os.path.join(args.output_location, "{}_r_obs.txt".format(str(args.k_nb)))
-    input_r_exp = os.path.join(args.output_location, "{}_r_exp.txt".format(str(args.k_nb)))
+    input_f_obs = os.path.join(args.output_location, args.output_prefix, "{}_f_obs.txt".format(str(args.k_nb)))
+    input_f_exp = os.path.join(args.output_location, args.output_prefix, "{}_f_exp.txt".format(str(args.k_nb)))
+    input_r_obs = os.path.join(args.output_location, args.output_prefix, "{}_r_obs.txt".format(str(args.k_nb)))
+    input_r_exp = os.path.join(args.output_location, args.output_prefix, "{}_r_exp.txt".format(str(args.k_nb)))
 
     model_list_f_obs = read_model(input_f_obs, args.k_nb)
     model_list_f_exp = read_model(input_f_exp, args.k_nb)
     model_list_r_obs = read_model(input_r_obs, args.k_nb)
     model_list_r_exp = read_model(input_r_exp, args.k_nb)
 
-    os.remove(input_f_obs)
-    os.remove(input_f_exp)
-    os.remove(input_r_obs)
-    os.remove(input_r_exp)
+    #os.remove(input_f_obs)
+    #os.remove(input_f_exp)
+    #os.remove(input_r_obs)
+    #os.remove(input_r_exp)
 
     # Creating bias dictionary
     alphabet = ["A", "C", "G", "T"]

@@ -972,6 +972,8 @@ class GenomicSignal:
             nhatr = Nr[i - (window / 2)] * (signal_bias_r[i] / rSum)
             bc_f.append(nhatf)
             bc_r.append(nhatr)
+            #bc_f.append((raw_f[i] + 1.0) / (nhatf + 1.0))
+            #bc_r.append((raw_r[i] + 1.0) / (nhatr + 1.0))
             fSum -= fLast
             fSum += signal_bias_f[i + (window / 2)]
             fLast = signal_bias_f[i - (window / 2) + 1]
@@ -983,6 +985,142 @@ class GenomicSignal:
             return np.array(bc_f), np.array(bc_r)
         else:
             return np.add(np.array(bc_f), np.array(bc_r))
+
+    def get_bc_signal_by_fragment_length_rand_shift(self, ref, start, end, bam, fasta, bias_table,
+                                         forward_shift, reverse_shift, min_length=None, max_length=None,
+                                         strand=True):
+        # Parameters
+        window = 50
+        defaultKmerValue = 1.0
+
+        # Initialization
+        fBiasDict = bias_table[0]
+        rBiasDict = bias_table[1]
+        k_nb = len(fBiasDict.keys()[0])
+        p1 = start
+        p2 = end
+        p1_w = p1 - (window / 2)
+        p2_w = p2 + (window / 2)
+        p1_wk = p1_w - int(k_nb / 2.)
+        p2_wk = p2_w + int(k_nb / 2.)
+
+        currStr = str(fasta.fetch(ref, p1_wk, p2_wk - 1)).upper()
+        currRevComp = AuxiliaryFunctions.revcomp(str(fasta.fetch(ref, p1_wk + 1, p2_wk)).upper())
+
+        # Iterating on sequence to create the bias signal
+        signal_bias_f = []
+        signal_bias_r = []
+        for i in range(int(k_nb / 2.), len(currStr) - int(k_nb / 2) + 1):
+            fseq = currStr[i - int(k_nb / 2.):i + int(k_nb / 2.)]
+            rseq = currRevComp[len(currStr) - int(k_nb / 2.) - i:len(currStr) + int(k_nb / 2.) - i]
+            try:
+                signal_bias_f.append(fBiasDict[fseq])
+            except Exception:
+                signal_bias_f.append(defaultKmerValue)
+            try:
+                signal_bias_r.append(rBiasDict[rseq])
+            except Exception:
+                signal_bias_r.append(defaultKmerValue)
+
+        # Raw counts
+        raw_f = [0.0] * (p2_w - p1_w)
+        raw_r = [0.0] * (p2_w - p1_w)
+
+        if min_length is None and max_length is None:
+            for read in bam.fetch(ref, p1_w, p2_w):
+                if not read.is_reverse:
+                    rand_forward_shift = np.random.randint(low=0, high=30)
+                    cut_site = read.pos + rand_forward_shift
+                    if p1_w <= cut_site < p2_w:
+                        raw_f[cut_site - p1_w] += 1.0
+                else:
+                    rand_reverse_shift = np.random.randint(low=-30, high=0)
+                    cut_site = read.aend + rand_reverse_shift - 1
+                    if p1_w <= cut_site < p2_w:
+                        raw_r[cut_site - p1_w] += 1.0
+        elif min_length is None and max_length is not None:
+            for read in bam.fetch(ref, p1_w, p2_w):
+                if abs(read.template_length) <= max_length:
+                    if not read.is_reverse:
+                        rand_forward_shift = np.random.randint(low=0, high=30)
+                        cut_site = read.pos + rand_forward_shift
+                        if p1_w <= cut_site < p2_w:
+                            raw_f[cut_site - p1_w] += 1.0
+                    else:
+                        rand_reverse_shift = np.random.randint(low=-30, high=0)
+                        cut_site = read.aend + rand_reverse_shift - 1
+                        if p1_w <= cut_site < p2_w:
+                            raw_r[cut_site - p1_w] += 1.0
+        elif min_length is not None and max_length is None:
+            for read in bam.fetch(ref, p1_w, p2_w):
+                if abs(read.template_length) > min_length:
+                    if not read.is_reverse:
+                        rand_forward_shift = np.random.randint(low=0, high=30)
+                        cut_site = read.pos + rand_forward_shift
+                        if p1_w <= cut_site < p2_w:
+                            raw_f[cut_site - p1_w] += 1.0
+                    else:
+                        rand_reverse_shift = np.random.randint(low=-30, high=0)
+                        cut_site = read.aend + rand_reverse_shift - 1
+                        if p1_w <= cut_site < p2_w:
+                            raw_r[cut_site - p1_w] += 1.0
+        elif min_length is not None and max_length is not None:
+            for read in bam.fetch(ref, p1_w, p2_w):
+                if min_length < abs(read.template_length) <= max_length:
+                    if not read.is_reverse:
+                        rand_forward_shift = np.random.randint(low=0, high=30)
+                        cut_site = read.pos + rand_forward_shift
+                        if p1_w <= cut_site < p2_w:
+                            raw_f[cut_site - p1_w] += 1.0
+                    else:
+                        rand_reverse_shift = np.random.randint(low=-30, high=0)
+                        cut_site = read.aend + rand_reverse_shift - 1
+                        if p1_w <= cut_site < p2_w:
+                            raw_r[cut_site - p1_w] += 1.0
+
+        # Smoothed counts
+        Nf = []
+        Nr = []
+        fSum = sum(raw_f[:window])
+        rSum = sum(raw_r[:window])
+        fLast = raw_f[0]
+        rLast = raw_r[0]
+        for i in range((window / 2), len(raw_f) - (window / 2)):
+            Nf.append(fSum)
+            Nr.append(rSum)
+            fSum -= fLast
+            fSum += raw_f[i + (window / 2)]
+            fLast = raw_f[i - (window / 2) + 1]
+            rSum -= rLast
+            rSum += raw_r[i + (window / 2)]
+            rLast = raw_r[i - (window / 2) + 1]
+
+        # Calculating bias and writing to wig file
+        fSum = sum(signal_bias_f[:window])
+        rSum = sum(signal_bias_r[:window])
+        fLast = signal_bias_f[0]
+        rLast = signal_bias_r[0]
+        bc_f = []
+        bc_r = []
+        for i in range((window / 2), len(signal_bias_f) - (window / 2)):
+            nhatf = Nf[i - (window / 2)] * (signal_bias_f[i] / fSum)
+            nhatr = Nr[i - (window / 2)] * (signal_bias_r[i] / rSum)
+            bc_f.append(nhatf)
+            bc_r.append(nhatr)
+            #bc_f.append((raw_f[i] + 1.0) / (nhatf + 1.0))
+            #bc_r.append((raw_r[i] + 1.0) / (nhatr + 1.0))
+            fSum -= fLast
+            fSum += signal_bias_f[i + (window / 2)]
+            fLast = signal_bias_f[i - (window / 2) + 1]
+            rSum -= rLast
+            rSum += signal_bias_r[i + (window / 2)]
+            rLast = signal_bias_r[i - (window / 2) + 1]
+
+        if strand:
+            return np.array(bc_f), np.array(bc_r)
+        else:
+            return np.add(np.array(bc_f), np.array(bc_r))
+
 
     def get_bias_raw_bc_signal(self, ref, start, end, bam, fasta, bias_table, forward_shift, reverse_shift,
                                strand=False):

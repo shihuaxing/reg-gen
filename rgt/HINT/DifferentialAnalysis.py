@@ -33,45 +33,28 @@ def diff_analysis_args(parser):
     parser.add_argument("--organism", type=str, metavar="STRING", default="hg19",
                         help="Organism considered on the analysis. Must have been setup in the RGTDATA folder. "
                              "Common choices are hg19, hg38. mm9, and mm10. DEFAULT: hg19")
-    parser.add_argument("--mpbs-file1", type=str, metavar="FILE", default=None,
-                        help="motif predicted binding sites file for condition 1, must be .bed file. DEFAULT: None")
-    parser.add_argument("--mpbs-file2", type=str, metavar="FILE", default=None,
-                        help="motif predicted binding sites file for condition 2, must be .bed file. DEFAULT: None")
-    parser.add_argument("--mpbs-file3", type=str, metavar="FILE", default=None,
-                        help="motif predicted binding sites file for condition 2, must be .bed file. DEFAULT: None")
-    parser.add_argument("--reads-file1", type=str, metavar="FILE", default=None,
-                        help="The BAM file containing the DNase-seq or ATAC-seq reads for condition 1. DEFAULT: None")
-    parser.add_argument("--reads-file2", type=str, metavar="FILE", default=None,
-                        help="The BAM file containing the DNase-seq or ATAC-seq reads for condition 2. DEFAULT: None")
-    parser.add_argument("--reads-file3", type=str, metavar="FILE", default=None,
-                        help="The BAM file containing the DNase-seq or ATAC-seq reads for condition 3. DEFAULT: None")
-
     parser.add_argument("--window-size", type=int, metavar="INT", default=200,
                         help="The window size for differential analysis. DEFAULT: 200")
-    parser.add_argument("--factor1", type=float, metavar="FLOAT", default=None,
-                        help="The normalization factor for condition 1. DEFAULT: None")
-    parser.add_argument("--factor2", type=float, metavar="FLOAT", default=None,
-                        help="The normalization factor for condition 1. DEFAULT: None")
-    parser.add_argument("--factor3", type=float, metavar="FLOAT", default=None,
-                        help="The normalization factor for condition 1. DEFAULT: None")
 
-    parser.add_argument("--forward-shift", type=int, metavar="INT", default=5, help=SUPPRESS)
-    parser.add_argument("--reverse-shift", type=int, metavar="INT", default=-4, help=SUPPRESS)
-    parser.add_argument("--bias-table1", type=str, metavar="FILE1_F,FILE1_R", default=None, help=SUPPRESS)
-    parser.add_argument("--bias-table2", type=str, metavar="FILE2_F,FILE2_R", default=None, help=SUPPRESS)
+    parser.add_argument("--mpbs-files", type=str, metavar="FILE", default=None, nargs="+",
+                        help="motif predicted binding sites files for all conditions, must be .bed file. DEFAULT: None")
+    parser.add_argument("--reads-file2", type=str, metavar="FILE", default=None, nargs="+",
+                        help="The BAM files containing the DNase-seq or ATAC-seq reads for all conditions. "
+                             "DEFAULT: None")
+    parser.add_argument("--factor2", type=float, metavar="FLOAT", default=None, nargs="+",
+                        help="The normalization factors for conditions. DEFAULT: None")
+    parser.add_argument("--names", type=str, metavar="STRING", default="None",
+                        help="The name of condition1. DEFAULT: None")
 
-    parser.add_argument("--condition1", type=str, metavar="STRING", default="condition1",
-                        help="The name of condition1. DEFAULT: condition1")
-    parser.add_argument("--condition2", type=str, metavar="STRING", default="condition1",
-                        help="The name of condition2. DEFAULT: condition2")
-    parser.add_argument("--condition3", type=str, metavar="STRING", default="condition1",
-                        help="The name of condition2. DEFAULT: condition2")
     parser.add_argument("--fdr", type=float, metavar="FLOAT", default=0.05,
                         help="The false discovery rate. DEFAULT: 0.05")
     parser.add_argument("--bc", action="store_true", default=False,
                         help="If set, all analysis will be based on bias corrected signal. DEFAULT: False")
     parser.add_argument("--nc", type=int, metavar="INT", default=cpu_count(),
                         help="The number of cores. DEFAULT: 1")
+
+    parser.add_argument("--forward-shift", type=int, metavar="INT", default=5, help=SUPPRESS)
+    parser.add_argument("--reverse-shift", type=int, metavar="INT", default=-4, help=SUPPRESS)
 
     # Output Options
     parser.add_argument("--output-location", type=str, metavar="PATH", default=os.getcwd(),
@@ -219,23 +202,19 @@ def diff_analysis_run(args):
     except Exception:
         err.throw_error("MM_OUT_FOLDER_CREATION")
 
-    mpbs1 = GenomicRegionSet("Motif Predicted Binding Sites of Condition1")
-    mpbs1.read(args.mpbs_file1)
+    mpbs = GenomicRegionSet("Motif Predicted Binding Sites")
+    for mpbs_file in args.mpbs_files:
+        mpbs_tmp = GenomicRegionSet("Motif Predicted Binding Sites of Condition: {}".format(str(i+1)))
+        mpbs_tmp.read(mpbs_file)
+        mpbs.combine(mpbs_tmp, output=False)
 
-    mpbs2 = GenomicRegionSet("Motif Predicted Binding Sites of Condition2")
-    mpbs2.read(args.mpbs_file2)
-
-    mpbs3 = GenomicRegionSet("Motif Predicted Binding Sites of Condition3")
-    mpbs3.read(args.mpbs_file3)
-
-    mpbs = mpbs1.combine(mpbs2, output=True)
-    mpbs = mpbs.combine(mpbs3, output=True)
     mpbs.sort()
-    mpbs_name_list = list(set(mpbs.get_names()))
+    factor_name_list = list(set(mpbs.get_names()))
 
-    signal_dict_by_tf_1 = dict()
-    signal_dict_by_tf_2 = dict()
-    signal_dict_by_tf_3 = dict()
+    signal_name_dict = dict()
+    for name in args.names:
+        signal_name_dict[name] = dict()
+
     motif_len_dict = dict()
     motif_num_dict = dict()
     pwm_dict_by_tf = dict()
@@ -249,26 +228,27 @@ def diff_analysis_run(args):
         bias_table = BiasTable().load_table(table_file_name_F=table_F, table_file_name_R=table_R)
 
         mpbs_list = list()
-        for mpbs_name in mpbs_name_list:
-            mpbs_list.append((mpbs_name, mpbs, args.reads_file1, args.reads_file2, args.reads_file3,
-                              args.organism, args.window_size, args.forward_shift, args.reverse_shift, bias_table))
+        for factor_name in factor_name_list:
+            mpbs_list.append((factor_name, mpbs, args.reads_files, args.organism, args.window_size, 
+                args.forward_shift, args.reverse_shift, bias_table))
         res = pool.map(get_bc_signal, mpbs_list)
 
     # differential analysis using raw signal
     else:
         mpbs_list = list()
-        for mpbs_name in mpbs_name_list:
-            mpbs_list.append((mpbs_name, args.mpbs_file1, args.mpbs_file2, args.reads_file1, args.reads_file2,
+        for factor_name in factor_name_list:
+            mpbs_list.append((factor_name, mpbs, args.reads_files
                               args.organism, args.window_size, args.forward_shift, args.reverse_shift))
         res = pool.map(get_raw_signal, mpbs_list)
 
-    for idx, mpbs_name in enumerate(mpbs_name_list):
-        signal_dict_by_tf_1[mpbs_name] = res[idx][0]
-        signal_dict_by_tf_2[mpbs_name] = res[idx][1]
-        signal_dict_by_tf_3[mpbs_name] = res[idx][2]
-        motif_len_dict[mpbs_name] = res[idx][3]
-        pwm_dict_by_tf[mpbs_name] = res[idx][4]
-        motif_num_dict[mpbs_name] = res[idx][5]
+    for name in args.names:
+        for idx, factor_name in enumerate(factor_name_list):
+            signal_name_dict[name][factor] = res[idx][0]
+            signal_dict_by_tf_2[mpbs_name] = res[idx][1]
+            signal_dict_by_tf_3[mpbs_name] = res[idx][2]
+            motif_len_dict[mpbs_name] = res[idx][3]
+            pwm_dict_by_tf[mpbs_name] = res[idx][4]
+            motif_num_dict[mpbs_name] = res[idx][5]
 
     if args.factor1 is None or args.factor2 is None or args.factor3 is None:
         args.factor1, args.factor2, args.factor3 = compute_factors(signal_dict_by_tf_1, signal_dict_by_tf_2,

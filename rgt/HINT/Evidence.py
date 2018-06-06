@@ -46,9 +46,9 @@ def evidence_run(args):
 
     for mpbs_region in mpbs_regions:
         if chip_summit_regions.include(mpbs_region):
-            mpbs_region.name = mpbs_region.name.split(":")[0] + ":Y"
+            mpbs_region.name = "T"
         else:
-            mpbs_region.name = mpbs_region.name.split(":")[0] + ":N"
+            mpbs_region.name = "F"
         tfbs_regions.add(mpbs_region)
 
     tfbs_regions.sort()
