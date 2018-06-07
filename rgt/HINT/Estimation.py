@@ -884,7 +884,9 @@ def compute_bias(args):
         proba_r_exp = compute_proba(vector, kmer, model_list_r_exp[0], args.k_nb)
 
         # Compute bias
-        bias_table_f[kmer] = min(round(proba_f_obs / proba_f_exp, 6), 10)
-        bias_table_r[kmer] = min(round(proba_r_obs / proba_r_exp, 6), 10)
+        #bias_table_f[kmer] = min(round(proba_f_obs / proba_f_exp, 6), 10)
+        #bias_table_r[kmer] = min(round(proba_r_obs / proba_r_exp, 6), 10)
+        bias_table_f[kmer] = round(proba_f_obs / proba_f_exp, 6)
+        bias_table_r[kmer] = round(proba_r_obs / proba_r_exp, 6)
 
     write_table(args.output_location, args.output_prefix, [bias_table_f, bias_table_r])
