@@ -240,7 +240,7 @@ def diff_analysis_run(args):
     plots_list = list()
     for factor_name in factor_name_list:
         signal_list = list()
-        for name in names:
+        for name in args.names:
             signal_list.append(signal_tf_dict[factor_name][name])
         plots_list.append((factor_name, motif_num_dict[factor_name], signal_list, args.names,
                            pwm_dict_by_tf[factor_name], output_location, args.window_size, args.standardize))
@@ -491,10 +491,10 @@ def line_plot(arguments):
     ax.set_xticklabels([str(start), 0, str(end)])
     max_signal, min_signal = -np.inf, np.inf
     for idx, name in enumerate(names):
-        if max_signal > max(norm_signal[idx]):
-            max_signal = max(norm_signal[idx])
-        if min_signal < min(norm_signal[idx]):
-            min_signal = min(norm_signal[idx])
+        if max_signal > max(signal_list[idx]):
+            max_signal = max(signal_list[idx])
+        if min_signal < min(signal_list[idx]):
+            min_signal = min(signal_list[idx])
     ax.set_yticks([min_signal, max_signal])
     ax.set_yticklabels([str(round(min_signal, 2)), str(round(max_signal, 2))], rotation=90)
 
