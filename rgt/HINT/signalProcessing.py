@@ -1029,52 +1029,44 @@ class GenomicSignal:
         if min_length is None and max_length is None:
             for read in bam.fetch(ref, p1_w, p2_w):
                 if not read.is_reverse:
-                    rand_forward_shift = np.random.randint(low=0, high=30)
-                    cut_site = read.pos + rand_forward_shift
+                    cut_site = read.pos + forward_shift
                     if p1_w <= cut_site < p2_w:
                         raw_f[cut_site - p1_w] += 1.0
                 else:
-                    rand_reverse_shift = np.random.randint(low=-30, high=0)
-                    cut_site = read.aend + rand_reverse_shift - 1
+                    cut_site = read.aend + reverse_shift - 1
                     if p1_w <= cut_site < p2_w:
                         raw_r[cut_site - p1_w] += 1.0
         elif min_length is None and max_length is not None:
             for read in bam.fetch(ref, p1_w, p2_w):
                 if abs(read.template_length) <= max_length:
                     if not read.is_reverse:
-                        rand_forward_shift = np.random.randint(low=0, high=30)
-                        cut_site = read.pos + rand_forward_shift
+                        cut_site = read.pos + forward_shift
                         if p1_w <= cut_site < p2_w:
                             raw_f[cut_site - p1_w] += 1.0
                     else:
-                        rand_reverse_shift = np.random.randint(low=-30, high=0)
-                        cut_site = read.aend + rand_reverse_shift - 1
+                        cut_site = read.aend + reverse_shift - 1
                         if p1_w <= cut_site < p2_w:
                             raw_r[cut_site - p1_w] += 1.0
         elif min_length is not None and max_length is None:
             for read in bam.fetch(ref, p1_w, p2_w):
                 if abs(read.template_length) > min_length:
                     if not read.is_reverse:
-                        rand_forward_shift = np.random.randint(low=0, high=30)
-                        cut_site = read.pos + rand_forward_shift
+                        cut_site = read.pos + forward_shift
                         if p1_w <= cut_site < p2_w:
                             raw_f[cut_site - p1_w] += 1.0
                     else:
-                        rand_reverse_shift = np.random.randint(low=-30, high=0)
-                        cut_site = read.aend + rand_reverse_shift - 1
+                        cut_site = read.aend + reverse_shift - 1
                         if p1_w <= cut_site < p2_w:
                             raw_r[cut_site - p1_w] += 1.0
         elif min_length is not None and max_length is not None:
             for read in bam.fetch(ref, p1_w, p2_w):
                 if min_length < abs(read.template_length) <= max_length:
                     if not read.is_reverse:
-                        rand_forward_shift = np.random.randint(low=0, high=30)
-                        cut_site = read.pos + rand_forward_shift
+                        cut_site = read.pos + forward_shift
                         if p1_w <= cut_site < p2_w:
                             raw_f[cut_site - p1_w] += 1.0
                     else:
-                        rand_reverse_shift = np.random.randint(low=-30, high=0)
-                        cut_site = read.aend + rand_reverse_shift - 1
+                        cut_site = read.aend + reverse_shift - 1
                         if p1_w <= cut_site < p2_w:
                             raw_r[cut_site - p1_w] += 1.0
 

@@ -98,7 +98,7 @@ def footprinting_args(parser):
 
     parser.add_argument('input_files', metavar='reads.bam regions.bed', type=str, nargs='*',
                         help='BAM file of reads and BED files of interesting regions')
-
+    parser.add_argument("--atac-test", default=False, action='store_true', help=SUPPRESS)
 
 def footprinting_run(args):
     if args.atac_seq:
@@ -109,6 +109,8 @@ def footprinting_run(args):
         histone(args)
     if args.dnase_histone:
         dnase_histone(args)
+    if args.atac_test:
+        atac_test(args)
 
 
 def atac_seq(args):
@@ -970,7 +972,33 @@ def atac_test(args):
             p2 = region.final
 
             input_sequence = list()
-            if args.model == "a":
+
+            if args.model == "all":
+                signal_bc_f, signal_bc_r = \
+                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
+                                                                bam=bam, fasta=fasta, bias_table=bias_table,
+                                                                forward_shift=forward_shift,
+                                                                reverse_shift=reverse_shift,
+                                                                min_length=None, max_length=None, strand=True)
+
+                signal_bc_f = reads_file.boyle_norm(signal_bc_f)
+                perc = scoreatpercentile(signal_bc_f, 98)
+                std = np.array(signal_bc_f).std()
+                signal_bc_f = reads_file.hon_norm_atac(signal_bc_f, perc, std)
+                signal_bc_f_slope = reads_file.slope(signal_bc_f, reads_file.sg_coefs)
+
+                signal_bc_r = reads_file.boyle_norm(signal_bc_r)
+                perc = scoreatpercentile(signal_bc_r, 98)
+                std = np.array(signal_bc_r).std()
+                signal_bc_r = reads_file.hon_norm_atac(signal_bc_r, perc, std)
+                signal_bc_r_slope = reads_file.slope(signal_bc_r, reads_file.sg_coefs)
+
+                input_sequence.append(signal_bc_f)
+                input_sequence.append(signal_bc_f_slope)
+                input_sequence.append(signal_bc_r)
+                input_sequence.append(signal_bc_r_slope)
+
+            elif args.model == "Nfr":
                 signal_bc_f_max_145, signal_bc_r_max_145 = \
                     reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
                                                                 bam=bam, fasta=fasta, bias_table=bias_table,
@@ -994,7 +1022,8 @@ def atac_test(args):
                 input_sequence.append(signal_bc_f_max_145_slope)
                 input_sequence.append(signal_bc_r_max_145)
                 input_sequence.append(signal_bc_r_max_145_slope)
-            elif args.model == "b":
+
+            elif args.model == "Nfr_1N_plus":
                 signal_bc_f_max_145, signal_bc_r_max_145 = \
                     reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
                                                                 bam=bam, fasta=fasta, bias_table=bias_table,
@@ -1041,54 +1070,9 @@ def atac_test(args):
                 input_sequence.append(signal_bc_f_min_145_slope)
                 input_sequence.append(signal_bc_r_min_145)
                 input_sequence.append(signal_bc_r_min_145_slope)
-            elif args.model == "c":
-                signal_bc_f_max_145, signal_bc_r_max_145 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=145, strand=True)
-                signal_bc_f_145_307, signal_bc_r_145_307 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=145, max_length=307, strand=True)
 
-                signal_bc_f_max_145 = reads_file.boyle_norm(signal_bc_f_max_145)
-                perc = scoreatpercentile(signal_bc_f_max_145, 98)
-                std = np.array(signal_bc_f_max_145).std()
-                signal_bc_f_max_145 = reads_file.hon_norm_atac(signal_bc_f_max_145, perc, std)
-                signal_bc_f_max_145_slope = reads_file.slope(signal_bc_f_max_145, reads_file.sg_coefs)
 
-                signal_bc_r_max_145 = reads_file.boyle_norm(signal_bc_r_max_145)
-                perc = scoreatpercentile(signal_bc_r_max_145, 98)
-                std = np.array(signal_bc_r_max_145).std()
-                signal_bc_r_max_145 = reads_file.hon_norm_atac(signal_bc_r_max_145, perc, std)
-                signal_bc_r_max_145_slope = reads_file.slope(signal_bc_r_max_145, reads_file.sg_coefs)
-
-                signal_bc_f_145_307 = reads_file.boyle_norm(signal_bc_f_145_307)
-                perc = scoreatpercentile(signal_bc_f_145_307, 98)
-                std = np.array(signal_bc_f_145_307).std()
-                signal_bc_f_145_307 = reads_file.hon_norm_atac(signal_bc_f_145_307, perc, std)
-                signal_bc_f_145_307_slope = reads_file.slope(signal_bc_f_145_307, reads_file.sg_coefs)
-
-                signal_bc_r_145_307 = reads_file.boyle_norm(signal_bc_r_145_307)
-                perc = scoreatpercentile(signal_bc_r_145_307, 98)
-                std = np.array(signal_bc_r_145_307).std()
-                signal_bc_r_145_307 = reads_file.hon_norm_atac(signal_bc_r_145_307, perc, std)
-                signal_bc_r_145_307_slope = reads_file.slope(signal_bc_r_145_307, reads_file.sg_coefs)
-
-                input_sequence.append(signal_bc_f_max_145)
-                input_sequence.append(signal_bc_f_max_145_slope)
-                input_sequence.append(signal_bc_r_max_145)
-                input_sequence.append(signal_bc_r_max_145_slope)
-
-                input_sequence.append(signal_bc_f_145_307)
-                input_sequence.append(signal_bc_f_145_307_slope)
-                input_sequence.append(signal_bc_r_145_307)
-                input_sequence.append(signal_bc_r_145_307_slope)
-            elif args.model == "d":
+            elif args.model == "Nfr_1N_2N":
                 signal_bc_f_max_145, signal_bc_r_max_145 = \
                     reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
                                                                 bam=bam, fasta=fasta, bias_table=bias_table,
@@ -1157,192 +1141,6 @@ def atac_test(args):
                 input_sequence.append(signal_bc_f_min_307_slope)
                 input_sequence.append(signal_bc_r_min_307)
                 input_sequence.append(signal_bc_r_min_307_slope)
-            elif args.model == "e":
-                signal_bc_f_max_145, signal_bc_r_max_145 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=145, strand=True)
-                signal_bc_f_145_307, signal_bc_r_145_307 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=145, max_length=307, strand=True)
-                signal_bc_f_307_500, signal_bc_r_307_500 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=307, max_length=500, strand=True)
-                signal_bc_f_max_145 = reads_file.boyle_norm(signal_bc_f_max_145)
-                perc = scoreatpercentile(signal_bc_f_max_145, 98)
-                std = np.array(signal_bc_f_max_145).std()
-                signal_bc_f_max_145 = reads_file.hon_norm_atac(signal_bc_f_max_145, perc, std)
-                signal_bc_f_max_145_slope = reads_file.slope(signal_bc_f_max_145, reads_file.sg_coefs)
-
-                signal_bc_r_max_145 = reads_file.boyle_norm(signal_bc_r_max_145)
-                perc = scoreatpercentile(signal_bc_r_max_145, 98)
-                std = np.array(signal_bc_r_max_145).std()
-                signal_bc_r_max_145 = reads_file.hon_norm_atac(signal_bc_r_max_145, perc, std)
-                signal_bc_r_max_145_slope = reads_file.slope(signal_bc_r_max_145, reads_file.sg_coefs)
-
-                signal_bc_f_145_307 = reads_file.boyle_norm(signal_bc_f_145_307)
-                perc = scoreatpercentile(signal_bc_f_145_307, 98)
-                std = np.array(signal_bc_f_145_307).std()
-                signal_bc_f_145_307 = reads_file.hon_norm_atac(signal_bc_f_145_307, perc, std)
-                signal_bc_f_145_307_slope = reads_file.slope(signal_bc_f_145_307, reads_file.sg_coefs)
-
-                signal_bc_r_145_307 = reads_file.boyle_norm(signal_bc_r_145_307)
-                perc = scoreatpercentile(signal_bc_r_145_307, 98)
-                std = np.array(signal_bc_r_145_307).std()
-                signal_bc_r_145_307 = reads_file.hon_norm_atac(signal_bc_r_145_307, perc, std)
-                signal_bc_r_145_307_slope = reads_file.slope(signal_bc_r_145_307, reads_file.sg_coefs)
-
-                signal_bc_f_307_500 = reads_file.boyle_norm(signal_bc_f_307_500)
-                perc = scoreatpercentile(signal_bc_f_307_500, 98)
-                std = np.array(signal_bc_f_307_500).std()
-                signal_bc_f_307_500 = reads_file.hon_norm_atac(signal_bc_f_307_500, perc, std)
-                signal_bc_f_307_500_slope = reads_file.slope(signal_bc_f_307_500, reads_file.sg_coefs)
-
-                signal_bc_r_307_500 = reads_file.boyle_norm(signal_bc_r_307_500)
-                perc = scoreatpercentile(signal_bc_r_307_500, 98)
-                std = np.array(signal_bc_r_307_500).std()
-                signal_bc_r_307_500 = reads_file.hon_norm_atac(signal_bc_r_307_500, perc, std)
-                signal_bc_r_307_500_slope = reads_file.slope(signal_bc_r_307_500, reads_file.sg_coefs)
-
-                input_sequence.append(signal_bc_f_max_145)
-                input_sequence.append(signal_bc_f_max_145_slope)
-                input_sequence.append(signal_bc_r_max_145)
-                input_sequence.append(signal_bc_r_max_145_slope)
-
-                input_sequence.append(signal_bc_f_145_307)
-                input_sequence.append(signal_bc_f_145_307_slope)
-                input_sequence.append(signal_bc_r_145_307)
-                input_sequence.append(signal_bc_r_145_307_slope)
-
-                input_sequence.append(signal_bc_f_307_500)
-                input_sequence.append(signal_bc_f_307_500_slope)
-                input_sequence.append(signal_bc_r_307_500)
-                input_sequence.append(signal_bc_r_307_500_slope)
-            elif args.model == "f":
-                signal_bc_f_max_145, signal_bc_r_max_145 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=145, strand=True)
-                signal_bc_f_145_307, signal_bc_r_145_307 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=145, max_length=307, strand=True)
-                signal_bc_f_307_500, signal_bc_r_307_500 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=307, max_length=500, strand=True)
-                signal_bc_f_min_500, signal_bc_r_min_500 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=500, max_length=None, strand=True)
-                signal_bc_f_max_145 = reads_file.boyle_norm(signal_bc_f_max_145)
-                perc = scoreatpercentile(signal_bc_f_max_145, 98)
-                std = np.array(signal_bc_f_max_145).std()
-                signal_bc_f_max_145 = reads_file.hon_norm_atac(signal_bc_f_max_145, perc, std)
-                signal_bc_f_max_145_slope = reads_file.slope(signal_bc_f_max_145, reads_file.sg_coefs)
-
-                signal_bc_r_max_145 = reads_file.boyle_norm(signal_bc_r_max_145)
-                perc = scoreatpercentile(signal_bc_r_max_145, 98)
-                std = np.array(signal_bc_r_max_145).std()
-                signal_bc_r_max_145 = reads_file.hon_norm_atac(signal_bc_r_max_145, perc, std)
-                signal_bc_r_max_145_slope = reads_file.slope(signal_bc_r_max_145, reads_file.sg_coefs)
-
-                signal_bc_f_145_307 = reads_file.boyle_norm(signal_bc_f_145_307)
-                perc = scoreatpercentile(signal_bc_f_145_307, 98)
-                std = np.array(signal_bc_f_145_307).std()
-                signal_bc_f_145_307 = reads_file.hon_norm_atac(signal_bc_f_145_307, perc, std)
-                signal_bc_f_145_307_slope = reads_file.slope(signal_bc_f_145_307, reads_file.sg_coefs)
-
-                signal_bc_r_145_307 = reads_file.boyle_norm(signal_bc_r_145_307)
-                perc = scoreatpercentile(signal_bc_r_145_307, 98)
-                std = np.array(signal_bc_r_145_307).std()
-                signal_bc_r_145_307 = reads_file.hon_norm_atac(signal_bc_r_145_307, perc, std)
-                signal_bc_r_145_307_slope = reads_file.slope(signal_bc_r_145_307, reads_file.sg_coefs)
-
-                signal_bc_f_307_500 = reads_file.boyle_norm(signal_bc_f_307_500)
-                perc = scoreatpercentile(signal_bc_f_307_500, 98)
-                std = np.array(signal_bc_f_307_500).std()
-                signal_bc_f_307_500 = reads_file.hon_norm_atac(signal_bc_f_307_500, perc, std)
-                signal_bc_f_307_500_slope = reads_file.slope(signal_bc_f_307_500, reads_file.sg_coefs)
-
-                signal_bc_r_307_500 = reads_file.boyle_norm(signal_bc_r_307_500)
-                perc = scoreatpercentile(signal_bc_r_307_500, 98)
-                std = np.array(signal_bc_r_307_500).std()
-                signal_bc_r_307_500 = reads_file.hon_norm_atac(signal_bc_r_307_500, perc, std)
-                signal_bc_r_307_500_slope = reads_file.slope(signal_bc_r_307_500, reads_file.sg_coefs)
-
-                signal_bc_f_min_500 = reads_file.boyle_norm(signal_bc_f_min_500)
-                perc = scoreatpercentile(signal_bc_f_min_500, 98)
-                std = np.array(signal_bc_f_min_500).std()
-                signal_bc_f_min_500 = reads_file.hon_norm_atac(signal_bc_f_min_500, perc, std)
-                signal_bc_f_min_500_slope = reads_file.slope(signal_bc_f_min_500, reads_file.sg_coefs)
-
-                signal_bc_r_min_500 = reads_file.boyle_norm(signal_bc_r_min_500)
-                perc = scoreatpercentile(signal_bc_r_min_500, 98)
-                std = np.array(signal_bc_r_min_500).std()
-                signal_bc_r_min_500 = reads_file.hon_norm_atac(signal_bc_r_min_500, perc, std)
-                signal_bc_r_min_500_slope = reads_file.slope(signal_bc_r_min_500, reads_file.sg_coefs)
-
-                input_sequence.append(signal_bc_f_max_145)
-                input_sequence.append(signal_bc_f_max_145_slope)
-                input_sequence.append(signal_bc_r_max_145)
-                input_sequence.append(signal_bc_r_max_145_slope)
-
-                input_sequence.append(signal_bc_f_145_307)
-                input_sequence.append(signal_bc_f_145_307_slope)
-                input_sequence.append(signal_bc_r_145_307)
-                input_sequence.append(signal_bc_r_145_307_slope)
-
-                input_sequence.append(signal_bc_f_307_500)
-                input_sequence.append(signal_bc_f_307_500_slope)
-                input_sequence.append(signal_bc_r_307_500)
-                input_sequence.append(signal_bc_r_307_500_slope)
-
-                input_sequence.append(signal_bc_f_min_500)
-                input_sequence.append(signal_bc_f_min_500_slope)
-                input_sequence.append(signal_bc_r_min_500)
-                input_sequence.append(signal_bc_r_min_500_slope)
-            elif args.model == "all":
-                signal_bc_f, signal_bc_r = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=None, strand=True)
-
-                signal_bc_f = reads_file.boyle_norm(signal_bc_f)
-                perc = scoreatpercentile(signal_bc_f, 98)
-                std = np.array(signal_bc_f).std()
-                signal_bc_f = reads_file.hon_norm_atac(signal_bc_f, perc, std)
-                signal_bc_f_slope = reads_file.slope(signal_bc_f, reads_file.sg_coefs)
-
-                signal_bc_r = reads_file.boyle_norm(signal_bc_r)
-                perc = scoreatpercentile(signal_bc_r, 98)
-                std = np.array(signal_bc_r).std()
-                signal_bc_r = reads_file.hon_norm_atac(signal_bc_r, perc, std)
-                signal_bc_r_slope = reads_file.slope(signal_bc_r, reads_file.sg_coefs)
-
-                input_sequence.append(signal_bc_f)
-                input_sequence.append(signal_bc_f_slope)
-                input_sequence.append(signal_bc_r)
-                input_sequence.append(signal_bc_r_slope)
-
 
             posterior_list = hmm.predict(np.array(input_sequence).T)
 
@@ -1376,7 +1174,24 @@ def atac_test(args):
             p2 = region.final
 
             input_sequence = list()
-            if args.model == "a":
+            if args.model == "all":
+                signal_bc = \
+                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
+                                                                bam=bam, fasta=fasta, bias_table=bias_table,
+                                                                forward_shift=forward_shift,
+                                                                reverse_shift=reverse_shift,
+                                                                min_length=None, max_length=None, strand=False)
+
+                signal_bc = reads_file.boyle_norm(signal_bc)
+                perc = scoreatpercentile(signal_bc, 98)
+                std = np.array(signal_bc).std()
+                signal_bc = reads_file.hon_norm_atac(signal_bc, perc, std)
+                signal_bc_slope = reads_file.slope(signal_bc, reads_file.sg_coefs)
+
+                input_sequence.append(signal_bc)
+                input_sequence.append(signal_bc_slope)
+
+            elif args.model == "Nfr":
                 signal_bc_max_145 = \
                     reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
                                                                 bam=bam, fasta=fasta, bias_table=bias_table,
@@ -1392,7 +1207,8 @@ def atac_test(args):
 
                 input_sequence.append(signal_bc_max_145)
                 input_sequence.append(signal_bc_max_145_slope)
-            elif args.model == "b":
+
+            elif args.model == "Nfr_1N_plus":
                 signal_bc_max_145 = \
                     reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
                                                                 bam=bam, fasta=fasta, bias_table=bias_table,
@@ -1423,38 +1239,8 @@ def atac_test(args):
                 input_sequence.append(signal_bc_max_145_slope)
                 input_sequence.append(signal_bc_min_145)
                 input_sequence.append(signal_bc_min_145_slope)
-            elif args.model == "c":
-                signal_bc_max_145 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=145, strand=False)
 
-                signal_bc_145_307 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=145, max_length=307, strand=False)
-
-                signal_bc_max_145 = reads_file.boyle_norm(signal_bc_max_145)
-                perc = scoreatpercentile(signal_bc_max_145, 98)
-                std = np.array(signal_bc_max_145).std()
-                signal_bc_max_145 = reads_file.hon_norm_atac(signal_bc_max_145, perc, std)
-                signal_bc_max_145_slope = reads_file.slope(signal_bc_max_145, reads_file.sg_coefs)
-
-                signal_bc_145_307 = reads_file.boyle_norm(signal_bc_145_307)
-                perc = scoreatpercentile(signal_bc_145_307, 98)
-                std = np.array(signal_bc_145_307).std()
-                signal_bc_145_307 = reads_file.hon_norm_atac(signal_bc_145_307, perc, std)
-                signal_bc_145_307_slope = reads_file.slope(signal_bc_145_307, reads_file.sg_coefs)
-
-                input_sequence.append(signal_bc_max_145)
-                input_sequence.append(signal_bc_max_145_slope)
-                input_sequence.append(signal_bc_145_307)
-                input_sequence.append(signal_bc_145_307_slope)
-            elif args.model == "d":
+            elif args.model == "Nfr_1N_2N":
                 signal_bc_max_145 = \
                     reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
                                                                 bam=bam, fasta=fasta, bias_table=bias_table,
@@ -1500,136 +1286,6 @@ def atac_test(args):
                 input_sequence.append(signal_bc_145_307_slope)
                 input_sequence.append(signal_bc_min_307)
                 input_sequence.append(signal_bc_min_307_slope)
-            elif args.model == "e":
-                signal_bc_max_145 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=145, strand=False)
-
-                signal_bc_145_307 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=145, max_length=307, strand=False)
-
-                signal_bc_307_500 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=307, max_length=500, strand=False)
-
-                signal_bc_max_145 = reads_file.boyle_norm(signal_bc_max_145)
-                perc = scoreatpercentile(signal_bc_max_145, 98)
-                std = np.array(signal_bc_max_145).std()
-                signal_bc_max_145 = reads_file.hon_norm_atac(signal_bc_max_145, perc, std)
-                signal_bc_max_145_slope = reads_file.slope(signal_bc_max_145, reads_file.sg_coefs)
-
-
-                signal_bc_145_307 = reads_file.boyle_norm(signal_bc_145_307)
-                perc = scoreatpercentile(signal_bc_145_307, 98)
-                std = np.array(signal_bc_145_307).std()
-                signal_bc_145_307 = reads_file.hon_norm_atac(signal_bc_145_307, perc, std)
-                signal_bc_145_307_slope = reads_file.slope(signal_bc_145_307, reads_file.sg_coefs)
-
-
-                signal_bc_307_500 = reads_file.boyle_norm(signal_bc_307_500)
-                perc = scoreatpercentile(signal_bc_307_500, 98)
-                std = np.array(signal_bc_307_500).std()
-                signal_bc_307_500 = reads_file.hon_norm_atac(signal_bc_307_500, perc, std)
-                signal_bc_307_500_slope = reads_file.slope(signal_bc_307_500, reads_file.sg_coefs)
-
-
-                input_sequence.append(signal_bc_max_145)
-                input_sequence.append(signal_bc_max_145_slope)
-                input_sequence.append(signal_bc_145_307)
-                input_sequence.append(signal_bc_145_307_slope)
-                input_sequence.append(signal_bc_307_500)
-                input_sequence.append(signal_bc_307_500_slope)
-            elif args.model == "f":
-                signal_bc_max_145 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=145, strand=False)
-
-                signal_bc_145_307 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=145, max_length=307, strand=False)
-
-                signal_bc_307_500 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=307, max_length=500, strand=False)
-
-                signal_bc_min_500 = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=500, max_length=None, strand=False)
-
-                signal_bc_max_145 = reads_file.boyle_norm(signal_bc_max_145)
-                perc = scoreatpercentile(signal_bc_max_145, 98)
-                std = np.array(signal_bc_max_145).std()
-                signal_bc_max_145 = reads_file.hon_norm_atac(signal_bc_max_145, perc, std)
-                signal_bc_max_145_slope = reads_file.slope(signal_bc_max_145, reads_file.sg_coefs)
-
-
-                signal_bc_145_307 = reads_file.boyle_norm(signal_bc_145_307)
-                perc = scoreatpercentile(signal_bc_145_307, 98)
-                std = np.array(signal_bc_145_307).std()
-                signal_bc_145_307 = reads_file.hon_norm_atac(signal_bc_145_307, perc, std)
-                signal_bc_145_307_slope = reads_file.slope(signal_bc_145_307, reads_file.sg_coefs)
-
-
-                signal_bc_307_500 = reads_file.boyle_norm(signal_bc_307_500)
-                perc = scoreatpercentile(signal_bc_307_500, 98)
-                std = np.array(signal_bc_307_500).std()
-                signal_bc_307_500 = reads_file.hon_norm_atac(signal_bc_307_500, perc, std)
-                signal_bc_307_500_slope = reads_file.slope(signal_bc_307_500, reads_file.sg_coefs)
-
-
-                signal_bc_min_500 = reads_file.boyle_norm(signal_bc_min_500)
-                perc = scoreatpercentile(signal_bc_min_500, 98)
-                std = np.array(signal_bc_min_500).std()
-                signal_bc_min_500 = reads_file.hon_norm_atac(signal_bc_min_500, perc, std)
-                signal_bc_min_500_slope = reads_file.slope(signal_bc_min_500, reads_file.sg_coefs)
-
-                input_sequence.append(signal_bc_max_145)
-                input_sequence.append(signal_bc_max_145_slope)
-                input_sequence.append(signal_bc_145_307)
-                input_sequence.append(signal_bc_145_307_slope)
-                input_sequence.append(signal_bc_307_500)
-                input_sequence.append(signal_bc_307_500_slope)
-                input_sequence.append(signal_bc_min_500)
-                input_sequence.append(signal_bc_min_500_slope)
-            elif args.model == "all":
-                signal_bc = \
-                    reads_file.get_bc_signal_by_fragment_length(ref=region.chrom, start=p1, end=p2,
-                                                                bam=bam, fasta=fasta, bias_table=bias_table,
-                                                                forward_shift=forward_shift,
-                                                                reverse_shift=reverse_shift,
-                                                                min_length=None, max_length=None, strand=False)
-
-                signal_bc = reads_file.boyle_norm(signal_bc)
-                perc = scoreatpercentile(signal_bc, 98)
-                std = np.array(signal_bc).std()
-                signal_bc = reads_file.hon_norm_atac(signal_bc, perc, std)
-                signal_bc_slope = reads_file.slope(signal_bc, reads_file.sg_coefs)
-
-                input_sequence.append(signal_bc)
-                input_sequence.append(signal_bc_slope)
-
 
             posterior_list = hmm.predict(np.array(input_sequence).T)
 

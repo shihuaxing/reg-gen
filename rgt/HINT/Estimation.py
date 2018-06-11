@@ -7,6 +7,7 @@ from math import floor
 from Bio import motifs
 # External
 from pysam import Samfile, Fastafile
+from collections import Counter
 
 from rgt.GenomicRegionSet import GenomicRegionSet
 from rgt.Util import AuxiliaryFunctions, GenomeData, HmmData
@@ -451,6 +452,14 @@ def create_signal(args, regions):
             if "N" not in s:
                 r_exp_dict[s] += 1
 
+    max_read = 4 ** args.k_nb
+    if args.k_nb == 12: max_read = 4 ** 10
+
+    f_obs_dict = Counter(f_obs_dict).most_common(max_read)
+    f_exp_dict = Counter(f_exp_dict).most_common(max_read)
+    r_obs_dict = Counter(r_obs_dict).most_common(max_read)
+    r_exp_dict = Counter(r_exp_dict).most_common(max_read)
+
     output_fname_f_obs = os.path.join(args.output_location, "{}_f_obs.fa".format(str(args.k_nb)))
     output_fname_f_exp = os.path.join(args.output_location, "{}_f_exp.fa".format(str(args.k_nb)))
     output_fname_r_obs = os.path.join(args.output_location, "{}_r_obs.fa".format(str(args.k_nb)))
@@ -461,18 +470,21 @@ def create_signal(args, regions):
     output_file_r_obs = open(output_fname_r_obs, "w")
     output_file_r_exp = open(output_fname_r_exp, "w")
 
-    for kmer in r_obs_dict.keys():
-        if f_obs_dict[kmer] > 0:
-            output_file_f_obs.write(kmer + "\t" + str(f_obs_dict[kmer]) + "\n")
-    for kmer in r_obs_dict.keys():
-        if f_exp_dict[kmer] > 0:
-            output_file_f_exp.write(kmer + "\t" + str(f_exp_dict[kmer]) + "\n")
-    for kmer in r_obs_dict.keys():
-        if r_obs_dict[kmer] > 0:
-            output_file_r_obs.write(kmer + "\t" + str(r_obs_dict[kmer]) + "\n")
-    for kmer in r_obs_dict.keys():
-        if r_exp_dict[kmer] > 0:
-            output_file_r_exp.write(kmer + "\t" + str(r_exp_dict[kmer]) + "\n")
+    for k, v in f_obs_dict:
+        output_file_f_obs.write(k + "\t" + str(v) + "\n")
+    output_file_f_obs.close()
+
+    for k, v in f_exp_dict:
+        output_file_f_exp.write(k + "\t" + str(v) + "\n")
+    output_file_f_exp.close()
+
+    for k, v in r_obs_dict:
+        output_file_r_obs.write(k + "\t" + str(v) + "\n")
+    output_file_r_obs.close()
+
+    for k, v in r_exp_dict:
+        output_file_r_exp.write(k + "\t" + str(v) + "\n")
+    output_file_r_exp.close()
 
     output_file_f_obs.close()
     output_file_f_exp.close()
