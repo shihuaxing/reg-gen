@@ -471,19 +471,23 @@ def create_signal(args, regions):
     output_file_r_exp = open(output_fname_r_exp, "w")
 
     for k, v in f_obs_dict:
-        output_file_f_obs.write(k + "\t" + str(v) + "\n")
+        if v > 0:
+            output_file_f_obs.write(k + "\t" + str(v) + "\n")
     output_file_f_obs.close()
 
     for k, v in f_exp_dict:
-        output_file_f_exp.write(k + "\t" + str(v) + "\n")
+        if v > 0:
+            output_file_f_exp.write(k + "\t" + str(v) + "\n")
     output_file_f_exp.close()
 
     for k, v in r_obs_dict:
-        output_file_r_obs.write(k + "\t" + str(v) + "\n")
+        if v > 0:
+            output_file_r_obs.write(k + "\t" + str(v) + "\n")
     output_file_r_obs.close()
 
     for k, v in r_exp_dict:
-        output_file_r_exp.write(k + "\t" + str(v) + "\n")
+        if v > 0:
+            output_file_r_exp.write(k + "\t" + str(v) + "\n")
     output_file_r_exp.close()
 
     output_file_f_obs.close()

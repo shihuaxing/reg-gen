@@ -115,8 +115,8 @@ def read_states_signals(args):
                               args.downstream_ext, args.upstream_ext,
                               args.forward_shift, args.reverse_shift,
                               bias_table=table, genome_file_name=genome_data.get_genome())
-    if args.print_bed_file:
-        args.output_bed_file(states)
+    #if args.print_bed_file:
+    #    args.output_bed_file(states)
 
     return states, norm_signal, slope_signal
 
