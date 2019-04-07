@@ -36,7 +36,11 @@ Then install the full RGT suite with all other dependencies:
 ::
 
     pip install --user RGT
-
+    
+    
+    to install the RGT pyBigWig is needed, and it may arise error when pip install pyBigWig. You may need to install curl tools ahead.
+    
+    sudo apt-get install curl libcurl3 libcurl3-dev
 
 Alternatively (but not recommended), you can clone this repository:
 
